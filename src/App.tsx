@@ -83,29 +83,61 @@ export default function App() {
         const cacheRes = await fetch(`/api/cache/roast?teamId=${id}&gw=${gw.event}&mode=${mode}`);
         if (cacheRes.ok) continue;
 
-        // Need to calculate gain
+        // Need to calculate gain, captain, bench
         const gwTransfersList = transfersList.filter(t => t.event === gw.event);
         let gain = null;
-        if (gwTransfersList.length > 0) {
-          const liveRes = await fetch(`/api/fpl/event/${gw.event}/live`);
+        let captainInfo = null;
+        let benchPoints = null;
+
+        try {
+          const [picksRes, liveRes] = await Promise.all([
+            fetchEventPicks(id, gw.event),
+            fetch(`/api/fpl/event/${gw.event}/live`)
+          ]);
+
           if (liveRes.ok) {
-             const liveData = await liveRes.json();
-             let inPoints = 0, outPoints = 0;
-             gwTransfersList.forEach(t => {
+            const liveData = await liveRes.json();
+            
+            // Gain
+            if (gwTransfersList.length > 0) {
+              let inPoints = 0, outPoints = 0;
+              gwTransfersList.forEach(t => {
                 const pIn = liveData.elements.find((e: any) => e.id === t.element_in);
                 const pOut = liveData.elements.find((e: any) => e.id === t.element_out);
                 if (pIn) inPoints += pIn.stats.total_points;
                 if (pOut) outPoints += pOut.stats.total_points;
-             });
-             gain = inPoints - outPoints - gw.event_transfers_cost;
+              });
+              gain = inPoints - outPoints - gw.event_transfers_cost;
+            }
+
+            // Captain & Bench
+            if (picksRes && picksRes.picks) {
+              const captainPick = picksRes.picks.find((p: any) => p.is_captain);
+              if (captainPick) {
+                const capPlayer = bootstrap.elements.find(e => e.id === captainPick.element);
+                const capLive = liveData.elements.find((e: any) => e.id === captainPick.element);
+                if (capPlayer && capLive) {
+                  captainInfo = { name: capPlayer.web_name, points: capLive.stats.total_points * captainPick.multiplier };
+                }
+              }
+              
+              let bPoints = 0;
+              picksRes.picks.filter((p: any) => p.position > 11).forEach((p: any) => {
+                const bLive = liveData.elements.find((e: any) => e.id === p.element);
+                if (bLive) bPoints += bLive.stats.total_points;
+              });
+              benchPoints = bPoints;
+            }
           }
+        } catch (e) {
+          console.error('Failed to fetch picks/live for background job', e);
         }
 
         const playersIn = gwTransfersList.map(t => bootstrap?.elements.find(e => e.id === t.element_in)?.web_name || 'Unknown');
         const playersOut = gwTransfersList.map(t => bootstrap?.elements.find(e => e.id === t.element_out)?.web_name || 'Unknown');
 
         // Call generateRoast (which handles the caching internally now)
-        await generateRoast(id, gw.event, gw.points, playersIn, playersOut, gw.event_transfers_cost, gain, mode);
+        await generateRoast(id, gw.event, gw.points, playersIn, playersOut, gw.event_transfers_cost, gain, mode, null, captainInfo, benchPoints);
         
         // Sleep longer to avoid rate limiting (8s for background jobs)
         await new Promise(resolve => setTimeout(resolve, 8000));
@@ -185,6 +217,28 @@ export default function App() {
     const mode = overrideMode || appMode;
     const activeChip = gwPicks?.active_chip || null;
     
+    let captainInfo = null;
+    let benchPoints = null;
+    
+    if (gwPicks) {
+      const captainPick = gwPicks.picks.find(p => p.is_captain);
+      if (captainPick) {
+        const capPlayer = bootstrapData?.elements.find(e => e.id === captainPick.element);
+        if (capPlayer) {
+          captainInfo = { 
+            name: capPlayer.web_name, 
+            points: (gwLivePoints[captainPick.element] || 0) * captainPick.multiplier 
+          };
+        }
+      }
+      
+      let bPoints = 0;
+      gwPicks.picks.filter(p => p.position > 11).forEach(p => {
+        bPoints += (gwLivePoints[p.element] || 0);
+      });
+      benchPoints = bPoints;
+    }
+    
     try {
       const playersIn = gwTransfersList.map(t => {
         const p = bootstrapData?.elements.find(e => e.id === t.element_in);
@@ -196,7 +250,7 @@ export default function App() {
         return p ? p.web_name : 'Unknown';
       });
       
-      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, mode, activeChip);
+      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, mode, activeChip, captainInfo, benchPoints);
       if (currentGwRequestRef.current !== gw) return;
       setRoast(roastText);
       setRoastCache(prev => ({ ...prev, [`${gw}_${mode}`]: roastText }));

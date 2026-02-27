@@ -11,7 +11,9 @@ export const generateRoast = async (
   cost: number,
   gain: number | null,
   mode: 'roast' | 'compliment',
-  activeChip: string | null = null
+  activeChip: string | null = null,
+  captainInfo: { name: string, points: number } | null = null,
+  benchPoints: number | null = null
 ): Promise<{ zh: string, en: string }> => {
   // 1. Check Cache First
   try {
@@ -28,6 +30,8 @@ export const generateRoast = async (
     : `转会扣分: -${cost}`;
 
   const chipText = activeChip ? `使用了芯片: ${activeChip}` : '未使用任何芯片';
+  const captainText = captainInfo ? `队长: ${captainInfo.name} (得分: ${captainInfo.points})` : '队长: 未知';
+  const benchText = benchPoints !== null ? `替补席总得分: ${benchPoints}` : '替补席得分: 未知';
 
   let prompt = '';
 
@@ -42,11 +46,13 @@ export const generateRoast = async (
 - ${gameweek === 1 ? '这是开局第一周，柯南降临的初始阵容' : gainText}
 - 蒙受柯南神恩买入的球员: ${transfersIn.length > 0 ? transfersIn.join(', ') : '无'}
 - 被柯南抛弃的球员: ${transfersOut.length > 0 ? transfersOut.join(', ') : '无'}
+- 钦定队长: ${captainInfo ? `${captainInfo.name} (得分: ${captainInfo.points})` : '未知'}
+- 替补席神兵总得分: ${benchPoints !== null ? benchPoints : '未知'}
 
 请根据以上数据，分别写一段中文和一段英文的极致赞美。
 
 【要求】：
-1. 中文版 (zh)：堆砌最华丽的词藻，用无所不用其极的马屁来赞扬柯南。把他比作诸葛亮、瓜迪奥拉、弗格森的结合体，甚至超越人类的战术理解。语气要极其谄媚、五体投地。如果转会收益是负数，一定要强行解释为这是柯南在下一盘大棋，凡人根本看不懂。
+1. 中文版 (zh)：堆砌最华丽的词藻，用无所不用其极的马屁来赞扬柯南。把他比作诸葛亮、瓜迪奥拉、弗格森的结合体，甚至超越人类的战术理解。语气要极其谄媚、五体投地。如果转会收益是负数，一定要强行解释为这是柯南在下一盘大棋，凡人根本看不懂。对于队长的选择和替补席的得分，也要进行疯狂的吹捧。
 2. 英文版 (en)：像莎士比亚赞美神明一样夸张（Shakespearean praise），使用极其华丽、史诗般的英语词汇（Epic, Divine, Omniscient），充满敬畏之心，并称呼他为 Conan。
 3. 绝对不要使用任何引号（""或“”）、书名号（《》）等不必要的标点符号。
 `;
@@ -61,17 +67,19 @@ export const generateRoast = async (
 - ${gameweek === 1 ? '这是开局第一周，阵容是初始选择' : gainText}
 - 买入球员: ${transfersIn.length > 0 ? transfersIn.join(', ') : '无'}
 - 卖出球员: ${transfersOut.length > 0 ? transfersOut.join(', ') : '无'}
+- ${captainText}
+- ${benchText}
 
 请根据以上数据，分别写一段中文赞美和一段英文赞美。
 
 【要求】：
-1. 中文版 (zh)：语气必须非常自然、口语化，就像微信群里那个最懂球的群友在疯狂膜拜大佬。不要客套。
+1. 中文版 (zh)：语气必须非常自然、口语化，就像微信群里那个最懂球的群友在疯狂膜拜大佬。不要客套。除了转会，也要夸奖他队长的选择和替补席的安排。
 2. 英文版 (en)：使用极其夸张的英式赞美（British praise）。
 3. 绝对不要使用任何引号（""或“”）、书名号（《》）等不必要的标点符号。
 `;
   } else {
     prompt = `
-你是一个极其毒舌、刻刻且严格的FPL（Fantasy Premier League）老玩家。
+你是一个极其毒舌、刻薄且严格的FPL（Fantasy Premier League）老玩家。
 你的任务是无情地吐槽用户在第 ${gameweek} 轮的操作。
 
 以下是该用户本轮的数据：
@@ -80,12 +88,15 @@ export const generateRoast = async (
 - ${gameweek === 1 ? '这是开局第一周，阵容是初始选择' : gainText}
 - 买入球员: ${transfersIn.length > 0 ? transfersIn.join(', ') : '无'}
 - 卖出球员: ${transfersOut.length > 0 ? transfersOut.join(', ') : '无'}
+- ${captainText}
+- ${benchText}
 
 请根据以上数据，分别写一段中文吐槽和一段英文吐槽。
 
 【特别说明】：
 1. 如果是第 1 轮 (Gameweek 1)，不要嘲笑用户没做转会，因为第一周大家都没有转会，重点吐槽他们的初始选人眼光。
 2. 如果使用了 Wildcard (外卡) 或 Free Hit (免费换人) 芯片，转会数量可能很多但成本为 0，要针对他们的“大清洗”操作进行评价。
+3. 务必吐槽他们队长的选择（如果得分很低），以及替补席的选择（如果替补席得分很高，说明他们把大腿放在了板凳上，狠狠嘲笑这一点）。
 
 【要求】：
 1. 中文版 (zh)：语气必须非常自然、口语化，就像微信群里那个最懂球但也最嘴臭的群友。直接开喷，不要客套。
