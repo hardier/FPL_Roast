@@ -188,29 +188,11 @@ app.get(["/api/fpl/event/:gw/live", "/fpl/event/:gw/live"], async (req, res) => 
   }
 });
 
-// Vite middleware for development
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  const viteModule = "vite";
-  import(viteModule).then(({ createServer: createViteServer }) => {
-    createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    }).then((vite) => {
-      app.use(vite.middlewares);
-      app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-      });
-    });
-  }).catch(err => {
-    console.error("Failed to load Vite:", err);
+// Only listen if NOT running in Vercel serverless environment
+if (!process.env.VERCEL && process.env.NODE_ENV === "production") {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
   });
-} else {
-  // Only listen if NOT running in Vercel serverless environment
-  if (!process.env.VERCEL) {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  }
 }
 
 export default app;
