@@ -1,0 +1,5 @@
+{
+  "name": "FPL Roast",
+  "description": "Enter your FPL team ID to see your gameweek performance and get roasted by AI for your transfer decisions.",
+  "requestFramePermissions": []
+}
