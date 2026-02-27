@@ -337,33 +337,33 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Sidebar: Gameweek List */}
             <div className="lg:col-span-4 space-y-4">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4 lg:mb-6">
                 <h2 className="text-xl font-semibold">Gameweeks</h2>
                 <button 
                   onClick={() => { setHistory([]); setSelectedGw(null); setTeamId(''); }}
-                  className="text-sm text-zinc-400 hover:text-white transition-colors"
+                  className="text-sm text-zinc-400 hover:text-white transition-colors bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-800"
                 >
                   Change Team
                 </button>
               </div>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-y-auto lg:max-h-[600px] pb-4 lg:pb-0 pr-2 custom-scrollbar snap-x">
                 {history.map((gw) => (
                   <button
                     key={gw.event}
                     onClick={() => handleSelectGw(gw.event)}
-                    className={`w-full text-left p-4 rounded-xl border transition-all ${
+                    className={`flex-shrink-0 w-56 lg:w-full text-left p-4 rounded-xl border transition-all snap-start ${
                       selectedGw === gw.event 
                         ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' 
                         : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-300'
                     }`}
                   >
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium">Gameweek {gw.event}</span>
-                      <span className="text-sm font-mono">{gw.points} pts</span>
+                    <div className="flex justify-between items-center mb-2 gap-2">
+                      <span className="font-medium whitespace-nowrap">Gameweek {gw.event}</span>
+                      <span className="text-sm font-mono whitespace-nowrap">{gw.points} pts</span>
                     </div>
-                    <div className="flex justify-between items-center text-xs opacity-70">
-                      <span>Rank: {gw.rank?.toLocaleString() || 'N/A'}</span>
-                      <span>{gw.event_transfers} transfers</span>
+                    <div className="flex justify-between items-center text-xs opacity-70 gap-2">
+                      <span className="truncate">Rank: {gw.rank?.toLocaleString() || 'N/A'}</span>
+                      <span className="whitespace-nowrap">{gw.event_transfers} transfers</span>
                     </div>
                   </button>
                 ))}
@@ -382,18 +382,18 @@ export default function App() {
                     className="space-y-6"
                   >
                     {/* Header Stats */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
-                        <div className="text-zinc-500 text-sm mb-1">GW Points</div>
-                        <div className="text-3xl font-mono text-white">{history.find(h => h.event === selectedGw)?.points}</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                      <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-6 rounded-2xl">
+                        <div className="text-zinc-500 text-xs sm:text-sm mb-1">GW Points</div>
+                        <div className="text-2xl sm:text-3xl font-mono text-white">{history.find(h => h.event === selectedGw)?.points}</div>
                       </div>
-                      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
-                        <div className="text-zinc-500 text-sm mb-1">Transfers</div>
-                        <div className="text-3xl font-mono text-white">{history.find(h => h.event === selectedGw)?.event_transfers}</div>
+                      <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-6 rounded-2xl">
+                        <div className="text-zinc-500 text-xs sm:text-sm mb-1">Transfers</div>
+                        <div className="text-2xl sm:text-3xl font-mono text-white">{history.find(h => h.event === selectedGw)?.event_transfers}</div>
                       </div>
-                      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
-                        <div className="text-zinc-500 text-sm mb-1">Transfer Value Gain</div>
-                        <div className={`text-3xl font-mono ${transferValueGain !== null ? (transferValueGain > 0 ? 'text-emerald-400' : transferValueGain < 0 ? 'text-red-400' : 'text-white') : 'text-zinc-600'}`}>
+                      <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-6 rounded-2xl col-span-2 sm:col-span-1">
+                        <div className="text-zinc-500 text-xs sm:text-sm mb-1">Transfer Value Gain</div>
+                        <div className={`text-2xl sm:text-3xl font-mono ${transferValueGain !== null ? (transferValueGain > 0 ? 'text-emerald-400' : transferValueGain < 0 ? 'text-red-400' : 'text-white') : 'text-zinc-600'}`}>
                           {transferValueGain !== null ? (transferValueGain > 0 ? `+${transferValueGain}` : transferValueGain) : '-'}
                         </div>
                       </div>
@@ -402,16 +402,16 @@ export default function App() {
                     {/* Roast Section */}
                     <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden relative">
                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-cyan-500"></div>
-                      <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+                      <div className="p-4 sm:p-6 border-b border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
                         <div className="flex items-center gap-3">
                           <Zap className={`w-5 h-5 ${appMode === 'compliment' ? 'text-pink-400' : 'text-emerald-400'}`} />
                           <h3 className="text-lg font-semibold">{appMode === 'compliment' ? 'AI Praise' : 'AI Roast'}</h3>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
                           {roast && (
                             <button
                               onClick={() => setRoastLang(l => l === 'zh' ? 'en' : 'zh')}
-                              className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                              className="flex-1 sm:flex-none justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
                             >
                               {roastLang === 'zh' ? '🇺🇸 English' : '🇨🇳 中文'}
                             </button>
@@ -419,13 +419,13 @@ export default function App() {
                           <button
                             onClick={handleRoast}
                             disabled={roasting}
-                            className={`px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 ${roast ? 'hidden' : ''}`}
+                            className={`flex-1 sm:flex-none justify-center px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 ${roast ? 'hidden' : ''}`}
                           >
                             {roasting ? 'Generating...' : (appMode === 'compliment' ? 'Praise My Transfers' : 'Roast My Transfers')}
                           </button>
                         </div>
                       </div>
-                      <div className="p-6 min-h-[150px] flex items-center justify-center">
+                      <div className="p-4 sm:p-6 min-h-[150px] flex items-center justify-center">
                         {roasting ? (
                           <div className="flex flex-col items-center gap-4 text-zinc-500">
                             <div className={`w-8 h-8 border-2 border-t-transparent rounded-full animate-spin ${appMode === 'compliment' ? 'border-pink-500' : 'border-emerald-500'}`}></div>
@@ -445,35 +445,36 @@ export default function App() {
 
                     {/* Transfers Section */}
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-                      <div className="p-6 border-b border-zinc-800 flex items-center gap-3">
+                      <div className="p-4 sm:p-6 border-b border-zinc-800 flex items-center gap-3">
                         <ArrowRightLeft className="w-5 h-5 text-zinc-400" />
                         <h3 className="text-lg font-semibold">Transfers Made</h3>
                       </div>
-                      <div className="p-6">
+                      <div className="p-4 sm:p-6">
                         {gwTransfers.length > 0 ? (
                           <div className="space-y-4">
                             {gwTransfers.map((t, i) => (
-                              <div key={i} className="flex items-center justify-between bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                                <div className="flex items-center gap-3 text-red-400 w-1/2">
-                                  <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
+                              <div key={i} className="flex flex-col sm:flex-row items-center justify-between bg-zinc-950 p-3 sm:p-4 rounded-xl border border-zinc-800 gap-3 sm:gap-0">
+                                <div className="flex items-center gap-3 text-red-400 w-full sm:w-1/2">
+                                  <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
                                     <ArrowRightLeft className="w-4 h-4" />
                                   </div>
-                                  <div>
-                                    <div className="font-medium">{getPlayerName(t.element_out)}</div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-medium truncate">{getPlayerName(t.element_out)}</div>
                                     <div className="text-xs opacity-70 flex items-center gap-1">
                                       Out <span className="font-mono text-zinc-500">({gwLivePoints[t.element_out] ?? '-'} pts)</span>
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3 text-emerald-400 w-1/2 justify-end text-right">
-                                  <div>
-                                    <div className="font-medium">{getPlayerName(t.element_in)}</div>
-                                    <div className="text-xs opacity-70 flex items-center gap-1 justify-end">
+                                <div className="hidden sm:block w-px h-8 bg-zinc-800 mx-4"></div>
+                                <div className="flex items-center gap-3 text-emerald-400 w-full sm:w-1/2 sm:justify-end sm:text-right">
+                                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0 sm:order-last">
+                                    <ArrowRightLeft className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-medium truncate">{getPlayerName(t.element_in)}</div>
+                                    <div className="text-xs opacity-70 flex items-center gap-1 sm:justify-end">
                                       <span className="font-mono text-zinc-500">({gwLivePoints[t.element_in] ?? '-'} pts)</span> In
                                     </div>
-                                  </div>
-                                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                                    <ArrowRightLeft className="w-4 h-4" />
                                   </div>
                                 </div>
                               </div>
@@ -490,17 +491,17 @@ export default function App() {
                     {/* Lineup Section - FPL Style Pitch */}
                     {gwPicks && (
                       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-                        <div className="p-6 border-b border-zinc-800 flex items-center gap-3">
+                        <div className="p-4 sm:p-6 border-b border-zinc-800 flex items-center gap-3">
                           <User className="w-5 h-5 text-zinc-400" />
                           <h3 className="text-lg font-semibold">Starting XI & Bench</h3>
                         </div>
-                        <div className="p-6 bg-emerald-900/20 relative">
+                        <div className="p-2 sm:p-6 bg-emerald-900/20 relative overflow-x-auto">
                           {/* Pitch Markings */}
-                          <div className="absolute inset-4 border-2 border-white/10 rounded-lg pointer-events-none"></div>
-                          <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-white/10 pointer-events-none"></div>
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-white/10 rounded-full pointer-events-none"></div>
+                          <div className="absolute inset-2 sm:inset-4 border-2 border-white/10 rounded-lg pointer-events-none min-w-[300px]"></div>
+                          <div className="absolute top-1/2 left-2 sm:left-4 right-2 sm:right-4 h-0.5 bg-white/10 pointer-events-none min-w-[300px]"></div>
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 sm:w-32 sm:h-32 border-2 border-white/10 rounded-full pointer-events-none"></div>
 
-                          <div className="relative z-10 space-y-8 py-4">
+                          <div className="relative z-10 space-y-6 sm:space-y-8 py-4 min-w-[300px]">
                             {/* Starting XI by Rows */}
                             {[1, 2, 3, 4].map(posType => {
                               const playersInRow = gwPicks.picks.filter(p => {
@@ -509,11 +510,11 @@ export default function App() {
                               });
 
                               return (
-                                <div key={posType} className="flex justify-around items-start gap-2">
+                                <div key={posType} className="flex justify-around items-start gap-1 sm:gap-2">
                                   {playersInRow.map(pick => (
-                                    <div key={pick.element} className="flex flex-col items-center text-center w-20">
+                                    <div key={pick.element} className="flex flex-col items-center text-center w-14 sm:w-20">
                                       <div className="relative mb-1">
-                                        <div className={`w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center transition-transform hover:scale-110`}>
+                                        <div className={`w-10 h-10 sm:w-16 sm:h-16 flex items-center justify-center transition-transform hover:scale-110`}>
                                           <img 
                                             src={getJerseyUrl(pick.element) || ''} 
                                             alt="Jersey"
@@ -521,12 +522,12 @@ export default function App() {
                                             referrerPolicy="no-referrer"
                                           />
                                         </div>
-                                        {pick.is_captain && <span className="absolute -top-1 -right-1 text-[10px] bg-emerald-500 text-white px-1 rounded font-bold shadow-sm z-20">C</span>}
-                                        {pick.is_vice_captain && <span className="absolute -top-1 -right-1 text-[10px] bg-zinc-700 text-white px-1 rounded font-bold shadow-sm z-20">V</span>}
+                                        {pick.is_captain && <span className="absolute -top-1 -right-1 text-[9px] sm:text-[10px] bg-emerald-500 text-white px-1 rounded font-bold shadow-sm z-20">C</span>}
+                                        {pick.is_vice_captain && <span className="absolute -top-1 -right-1 text-[9px] sm:text-[10px] bg-zinc-700 text-white px-1 rounded font-bold shadow-sm z-20">V</span>}
                                       </div>
-                                      <div className="bg-zinc-950/80 backdrop-blur-sm px-1.5 py-0.5 rounded border border-zinc-800 w-full overflow-hidden shadow-lg">
-                                        <div className="text-[10px] sm:text-xs font-medium truncate text-white">{getPlayerName(pick.element)}</div>
-                                        <div className="text-[10px] font-mono text-emerald-400">
+                                      <div className="bg-zinc-950/80 backdrop-blur-sm px-1 sm:px-1.5 py-0.5 rounded border border-zinc-800 w-full overflow-hidden shadow-lg">
+                                        <div className="text-[9px] sm:text-xs font-medium truncate text-white">{getPlayerName(pick.element)}</div>
+                                        <div className="text-[9px] sm:text-[10px] font-mono text-emerald-400">
                                           {gwLivePoints[pick.element] !== undefined 
                                             ? (gwLivePoints[pick.element] * pick.multiplier) 
                                             : '-'} pts
@@ -541,12 +542,12 @@ export default function App() {
                         </div>
 
                         {/* Bench Section */}
-                        <div className="p-6 bg-zinc-950/50 border-t border-zinc-800">
+                        <div className="p-4 sm:p-6 bg-zinc-950/50 border-t border-zinc-800 overflow-x-auto">
                           <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Substitutes</div>
-                          <div className="flex justify-around gap-2">
+                          <div className="flex justify-around gap-2 min-w-[300px]">
                             {gwPicks.picks.filter(p => p.position > 11).sort((a, b) => a.position - b.position).map(pick => (
-                              <div key={pick.element} className="flex flex-col items-center text-center w-20 opacity-80">
-                                <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center mb-1">
+                              <div key={pick.element} className="flex flex-col items-center text-center w-14 sm:w-20 opacity-80">
+                                <div className="w-8 h-8 sm:w-12 sm:h-12 flex items-center justify-center mb-1">
                                   <img 
                                     src={getJerseyUrl(pick.element) || ''} 
                                     alt="Jersey"
@@ -554,8 +555,8 @@ export default function App() {
                                     referrerPolicy="no-referrer"
                                   />
                                 </div>
-                                <div className="text-[10px] sm:text-xs font-medium truncate text-zinc-300 w-full">{getPlayerName(pick.element)}</div>
-                                <div className="text-[10px] font-mono text-zinc-500">{gwLivePoints[pick.element] ?? '-'} pts</div>
+                                <div className="text-[9px] sm:text-xs font-medium truncate text-zinc-300 w-full">{getPlayerName(pick.element)}</div>
+                                <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500">{gwLivePoints[pick.element] ?? '-'} pts</div>
                               </div>
                             ))}
                           </div>
