@@ -19,6 +19,8 @@ app.get(["/api/health", "/health"], (req, res) => {
     status: "ok", 
     env: process.env.NODE_ENV, 
     vercel: !!process.env.VERCEL,
+    redisConfigured: !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN),
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
     timestamp: new Date().toISOString()
   });
 });
@@ -53,6 +55,7 @@ app.get(['/api/cache/roast', '/cache/roast'], async (req, res) => {
         console.log(`[Cache] Redis HIT for ${key}`);
         return res.json(data);
       }
+      console.log(`[Cache] Redis MISS for ${key}`);
     } catch (e) {
       console.error("[Cache] Redis get error:", e);
     }
@@ -113,8 +116,9 @@ const fetchFPL = async (url: string) => {
     }
     
     if (!response.ok) {
-      console.error(`FPL API error: ${response.status}`, text.slice(0, 200));
-      throw { status: response.status, message: `FPL API error: ${response.status}`, details: text.slice(0, 500) };
+      console.error(`FPL API error: ${response.status} for ${url}`);
+      const errorText = text.slice(0, 200);
+      throw { status: response.status, message: `FPL API error: ${response.status}`, details: errorText };
     }
     
     return JSON.parse(text);
