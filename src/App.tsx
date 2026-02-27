@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Trophy, ArrowRightLeft, AlertCircle, ChevronRight, User, Shield, Zap } from 'lucide-react';
 import { fetchBootstrap, fetchTeamHistory, fetchTeamTransfers, fetchEventPicks } from './services/fplService';
@@ -26,19 +26,21 @@ export default function App() {
   const [transferValueGain, setTransferValueGain] = useState<number | null>(null);
   const [appMode, setAppMode] = useState<'roast' | 'compliment'>('roast');
 
+  const init = async () => {
+    setIsInitializing(true);
+    setError(null);
+    try {
+      const data = await fetchBootstrap();
+      setBootstrapData(data);
+    } catch (err: any) {
+      console.error('Failed to load bootstrap data', err);
+      setError(`Failed to initialize: ${err.message}. This is usually because FPL API is blocking the server. Please try refreshing or clicking retry.`);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
   useEffect(() => {
-    const init = async () => {
-      setIsInitializing(true);
-      try {
-        const data = await fetchBootstrap();
-        setBootstrapData(data);
-      } catch (err: any) {
-        console.error('Failed to load bootstrap data', err);
-        setError(`Failed to initialize: ${err.message}. Please refresh the page.`);
-      } finally {
-        setIsInitializing(false);
-      }
-    };
     init();
   }, []);
 
@@ -281,9 +283,19 @@ export default function App() {
               {!loading && !isInitializing && <ChevronRight className="w-5 h-5" />}
             </button>
             {error && (
-              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-400">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                <p className="text-sm">{error}</p>
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl space-y-3 text-red-400">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="text-sm">{error}</p>
+                </div>
+                {!bootstrapData && !loading && (
+                  <button 
+                    onClick={(e) => { e.preventDefault(); init(); }}
+                    className="text-xs bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded-lg transition-colors font-medium border border-red-500/30"
+                  >
+                    Retry Initialization
+                  </button>
+                )}
               </div>
             )}
           </motion.form>

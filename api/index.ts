@@ -1,11 +1,15 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import { Redis } from '@upstash/redis';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Add a simple health check for the API
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", env: process.env.NODE_ENV, vercel: !!process.env.VERCEL });
+});
 
 // --- Upstash Redis Cache ---
 // Initialize Redis client if environment variables are present
@@ -137,21 +141,20 @@ app.get("/api/fpl/event/:gw/live", async (req, res) => {
   }
 });
 
-// Vite middleware for development or Static serving for production
+// Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
-  createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  }).then((vite) => {
-    app.use(vite.middlewares);
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+  import("vite").then(({ createServer: createViteServer }) => {
+    createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    }).then((vite) => {
+      app.use(vite.middlewares);
+      app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
     });
   });
 } else {
-  // In production, serve static files from dist
-  app.use(express.static("dist"));
-  
   // Only listen if NOT running in Vercel serverless environment
   if (!process.env.VERCEL) {
     app.listen(PORT, () => {

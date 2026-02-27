@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.ts",
+      "src": "api/index.ts",
       "use": "@vercel/node"
     },
     {
@@ -13,10 +13,15 @@
       }
     }
   ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/server.ts"
+      "destination": "/api"
     },
     {
       "source": "/(.*)",
