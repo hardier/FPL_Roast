@@ -21,10 +21,11 @@ export default function App() {
   
   const [roast, setRoast] = useState<{ zh: string; en: string } | null>(null);
   const [roasting, setRoasting] = useState(false);
-  const [roastCache, setRoastCache] = useState<Record<number, { zh: string; en: string }>>({});
+  const [roastCache, setRoastCache] = useState<Record<string, { zh: string; en: string }>>({});
   const [roastLang, setRoastLang] = useState<'zh' | 'en'>('zh');
   const [transferValueGain, setTransferValueGain] = useState<number | null>(null);
   const [appMode, setAppMode] = useState<'roast' | 'compliment'>('roast');
+  const currentGwRequestRef = React.useRef<number | null>(null);
 
   const init = async () => {
     setIsInitializing(true);
@@ -115,6 +116,7 @@ export default function App() {
 
   const handleSelectGw = async (gw: number) => {
     if (!teamId || !bootstrapData) return;
+    currentGwRequestRef.current = gw;
     setSelectedGw(gw);
     setRoast(null);
     setTransferValueGain(null);
@@ -122,6 +124,7 @@ export default function App() {
     try {
       const id = parseInt(teamId, 10);
       const picks = await fetchEventPicks(id, gw);
+      if (currentGwRequestRef.current !== gw) return;
       setGwPicks(picks);
       
       const gwTransfersList = transfers.filter(t => t.event === gw);
@@ -136,19 +139,8 @@ export default function App() {
         let inPoints = 0;
         let outPoints = 0;
 
-        // Note: To accurately calculate points for players in/out for a specific GW, 
-        // we ideally need the live/history data for those specific players in that GW.
-        // Since we don't have that API endpoint easily available here without many calls,
-        // we'll approximate or leave it as a placeholder if we can't fetch it.
-        // For a true implementation, we'd need to fetch each player's history.
-        // Let's assume we can fetch it or we just show the cost for now if we can't.
-        // Actually, let's fetch the player history if needed, but it's too many API calls.
-        // Let's just pass the cost to the UI for now, and we'll refine the gain calculation if we add the endpoint.
-        // Wait, the prompt asks to show "transfer value gain" - total scores of player transferred in - total scores of player transferred out - hits points.
-        // We need the player's score for that GW.
-        // Let's add an endpoint to get player history or live data.
-        // Actually, we can fetch the live data for the event: /api/event/{event}/live/
         const liveRes = await fetch(`/api/fpl/event/${gw}/live`);
+        if (currentGwRequestRef.current !== gw) return;
         if (liveRes.ok) {
            const liveData = await liveRes.json();
            
@@ -166,8 +158,9 @@ export default function App() {
       setTransferValueGain(gain);
 
       // Auto-generate roast if not cached
-      if (roastCache[gw]) {
-        setRoast(roastCache[gw]);
+      const cacheKey = `${gw}_${appMode}`;
+      if (roastCache[cacheKey]) {
+        setRoast(roastCache[cacheKey]);
       } else {
         generateAndSetRoast(gw, gwHistory?.points || 0, gwTransfersList, cost, gain);
       }
@@ -177,8 +170,10 @@ export default function App() {
     }
   };
 
-  const generateAndSetRoast = async (gw: number, points: number, gwTransfersList: Transfer[], cost: number, gain: number | null) => {
+  const generateAndSetRoast = async (gw: number, points: number, gwTransfersList: Transfer[], cost: number, gain: number | null, overrideMode?: 'roast' | 'compliment') => {
+    if (currentGwRequestRef.current !== gw) return;
     setRoasting(true);
+    const mode = overrideMode || appMode;
     try {
       const playersIn = gwTransfersList.map(t => {
         const p = bootstrapData?.elements.find(e => e.id === t.element_in);
@@ -190,13 +185,17 @@ export default function App() {
         return p ? p.web_name : 'Unknown';
       });
       
-      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, appMode);
+      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, mode);
+      if (currentGwRequestRef.current !== gw) return;
       setRoast(roastText);
-      setRoastCache(prev => ({ ...prev, [gw]: roastText }));
+      setRoastCache(prev => ({ ...prev, [`${gw}_${mode}`]: roastText }));
     } catch (err) {
+      if (currentGwRequestRef.current !== gw) return;
       setRoast({ zh: '生成吐槽失败。AI被你的烂操作震惊到无语了。', en: 'Failed to generate roast. The AI is speechless.' });
     } finally {
-      setRoasting(false);
+      if (currentGwRequestRef.current === gw) {
+        setRoasting(false);
+      }
     }
   };
 
@@ -222,8 +221,21 @@ export default function App() {
   };
 
   const handleSecretClick = () => {
-    setAppMode(prev => prev === 'roast' ? 'compliment' : 'roast');
-    setRoast(null); // Clear current roast to force regeneration on mode switch
+    const newMode = appMode === 'roast' ? 'compliment' : 'roast';
+    setAppMode(newMode);
+    setRoast(null); 
+    
+    if (selectedGw) {
+      const cacheKey = `${selectedGw}_${newMode}`;
+      if (roastCache[cacheKey]) {
+        setRoast(roastCache[cacheKey]);
+      } else {
+        const gwHistory = history.find(h => h.event === selectedGw);
+        const gwTransfersList = transfers.filter(t => t.event === selectedGw);
+        // We pass the newMode explicitly to avoid stale state issues
+        generateAndSetRoast(selectedGw, gwHistory?.points || 0, gwTransfersList, gwHistory?.event_transfers_cost || 0, transferValueGain, newMode);
+      }
+    }
   };
 
   return (

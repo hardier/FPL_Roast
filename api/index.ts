@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { Redis } from '@upstash/redis';
 
@@ -23,50 +24,64 @@ app.get(["/api/health", "/health"], (req, res) => {
 });
 
 // --- Upstash Redis Cache ---
-// Initialize Redis client if environment variables are present
-const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-  ? new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
   : null;
+
+if (redis) {
+  console.log("[Redis] Initialized successfully");
+} else {
+  console.log("[Redis] Missing credentials, using memory cache fallback");
+}
 
 // Fallback memory cache for local development if Upstash is not configured
 let memoryCache: Record<string, {zh: string, en: string}> = {};
 
 app.get(['/api/cache/roast', '/cache/roast'], async (req, res) => {
   const { teamId, gw, mode } = req.query;
-  const key = `fpl_roast:${teamId}_${gw}_${mode}`;
+  const key = `fpl_roast:${String(teamId)}_${String(gw)}_${String(mode)}`;
   
+  console.log(`[Cache] GET attempt for key: ${key}`);
+
   if (redis) {
     try {
       const data = await redis.get(key);
       if (data) {
+        console.log(`[Cache] Redis HIT for ${key}`);
         return res.json(data);
       }
     } catch (e) {
-      console.error("Redis get error:", e);
+      console.error("[Cache] Redis get error:", e);
     }
   } else if (memoryCache[key]) {
+    console.log(`[Cache] Memory HIT for ${key}`);
     return res.json(memoryCache[key]);
   }
   
+  console.log(`[Cache] MISS for ${key}`);
   res.status(404).json({ error: 'Not found' });
 });
 
 app.post(['/api/cache/roast', '/cache/roast'], async (req, res) => {
   const { teamId, gw, mode, zh, en } = req.body;
-  const key = `fpl_roast:${teamId}_${gw}_${mode}`;
+  const key = `fpl_roast:${String(teamId)}_${String(gw)}_${String(mode)}`;
   const data = { zh, en };
   
+  console.log(`[Cache] POST saving for key: ${key}`);
+
   if (redis) {
     try {
       await redis.set(key, data);
+      console.log(`[Cache] Redis SET success for ${key}`);
     } catch (e) {
-      console.error("Redis set error:", e);
+      console.error("[Cache] Redis set error:", e);
     }
   } else {
     memoryCache[key] = data;
+    console.log(`[Cache] Memory SET success for ${key}`);
   }
   
   res.json({ success: true });
