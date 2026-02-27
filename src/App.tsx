@@ -11,6 +11,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   
   const [bootstrapData, setBootstrapData] = useState<BootstrapData | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   
@@ -27,11 +28,15 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
+      setIsInitializing(true);
       try {
         const data = await fetchBootstrap();
         setBootstrapData(data);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to load bootstrap data', err);
+        setError(`Failed to initialize: ${err.message}. Please refresh the page.`);
+      } finally {
+        setIsInitializing(false);
       }
     };
     init();
@@ -54,11 +59,12 @@ export default function App() {
         fetchTeamTransfers(id)
       ]);
       
-      setHistory(historyData.current.reverse()); // Show latest first
-      setTransfers(transfersData);
+      const currentHistory = [...(historyData.current || [])].reverse();
+      setHistory(currentHistory); // Show latest first
+      setTransfers(transfersData || []);
       
-      // Start background generation
-      runBackgroundJobs(id, historyData.current.reverse(), transfersData, bootstrapData, appMode);
+      // Start background generation for recent 5 GWs to avoid quota issues
+      runBackgroundJobs(id, currentHistory.slice(0, 5), transfersData || [], bootstrapData, appMode);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch team data. Please check your Team ID.');
     } finally {
@@ -97,8 +103,8 @@ export default function App() {
         // Call generateRoast (which handles the caching internally now)
         await generateRoast(id, gw.event, gw.points, playersIn, playersOut, gw.event_transfers_cost, gain, mode);
         
-        // Sleep to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Sleep longer to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 5000));
       } catch (e) {
         console.error(`Background job failed for GW ${gw.event}`, e);
       }
@@ -268,11 +274,11 @@ export default function App() {
             </div>
             <button
               type="submit"
-              disabled={loading || !teamId || !bootstrapData}
+              disabled={loading || isInitializing || !teamId.trim() || !bootstrapData}
               className="w-full mt-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold py-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading ? 'Fetching Data...' : 'Analyze My Team'}
-              {!loading && <ChevronRight className="w-5 h-5" />}
+              {isInitializing ? 'Initializing...' : loading ? 'Fetching Data...' : 'Analyze My Team'}
+              {!loading && !isInitializing && <ChevronRight className="w-5 h-5" />}
             </button>
             {error && (
               <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-400">
@@ -312,7 +318,7 @@ export default function App() {
                       <span className="text-sm font-mono">{gw.points} pts</span>
                     </div>
                     <div className="flex justify-between items-center text-xs opacity-70">
-                      <span>Rank: {gw.rank.toLocaleString()}</span>
+                      <span>Rank: {gw.rank?.toLocaleString() || 'N/A'}</span>
                       <span>{gw.event_transfers} transfers</span>
                     </div>
                   </button>

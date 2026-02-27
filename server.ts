@@ -1,46 +1,59 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import fs from "fs/promises";
-import path from "path";
+import { Redis } from '@upstash/redis';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// --- Simple File-Based Cache for Preview Environment ---
-// In production on Vercel, you should replace this with Vercel KV (Redis)
-const CACHE_FILE = path.join(process.cwd(), 'roast_cache.json');
+// --- Upstash Redis Cache ---
+// Initialize Redis client if environment variables are present
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null;
+
+// Fallback memory cache for local development if Upstash is not configured
 let memoryCache: Record<string, {zh: string, en: string}> = {};
 
-// Load cache on startup
-fs.readFile(CACHE_FILE, 'utf-8')
-  .then(data => { memoryCache = JSON.parse(data); })
-  .catch(() => { console.log("No existing cache file found, starting fresh."); });
-
-const saveCache = async () => {
-  try {
-    await fs.writeFile(CACHE_FILE, JSON.stringify(memoryCache), 'utf-8');
-  } catch (e) {
-    console.error("Failed to save cache to disk", e);
-  }
-};
-
-app.get('/api/cache/roast', (req, res) => {
+app.get('/api/cache/roast', async (req, res) => {
   const { teamId, gw, mode } = req.query;
-  const key = `${teamId}_${gw}_${mode}`;
-  if (memoryCache[key]) {
-    res.json(memoryCache[key]);
-  } else {
-    res.status(404).json({ error: 'Not found' });
+  const key = `fpl_roast:${teamId}_${gw}_${mode}`;
+  
+  if (redis) {
+    try {
+      const data = await redis.get(key);
+      if (data) {
+        return res.json(data);
+      }
+    } catch (e) {
+      console.error("Redis get error:", e);
+    }
+  } else if (memoryCache[key]) {
+    return res.json(memoryCache[key]);
   }
+  
+  res.status(404).json({ error: 'Not found' });
 });
 
 app.post('/api/cache/roast', async (req, res) => {
   const { teamId, gw, mode, zh, en } = req.body;
-  const key = `${teamId}_${gw}_${mode}`;
-  memoryCache[key] = { zh, en };
-  await saveCache();
+  const key = `fpl_roast:${teamId}_${gw}_${mode}`;
+  const data = { zh, en };
+  
+  if (redis) {
+    try {
+      await redis.set(key, data);
+    } catch (e) {
+      console.error("Redis set error:", e);
+    }
+  } else {
+    memoryCache[key] = data;
+  }
+  
   res.json({ success: true });
 });
 // -------------------------------------------------------
