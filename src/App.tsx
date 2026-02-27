@@ -25,6 +25,7 @@ export default function App() {
   const [roastLang, setRoastLang] = useState<'zh' | 'en'>('zh');
   const [transferValueGain, setTransferValueGain] = useState<number | null>(null);
   const [appMode, setAppMode] = useState<'roast' | 'compliment'>('roast');
+  const [gwLivePoints, setGwLivePoints] = useState<Record<number, number>>({});
   const currentGwRequestRef = React.useRef<number | null>(null);
 
   const init = async () => {
@@ -120,13 +121,30 @@ export default function App() {
     setSelectedGw(gw);
     setRoast(null);
     setTransferValueGain(null);
+    setGwLivePoints({}); // Clear old points to avoid flashing
     
     try {
       const id = parseInt(teamId, 10);
-      const picks = await fetchEventPicks(id, gw);
+      
+      // Fetch picks and live data in parallel for better performance
+      const [picks, liveRes] = await Promise.all([
+        fetchEventPicks(id, gw),
+        fetch(`/api/fpl/event/${gw}/live`)
+      ]);
+
       if (currentGwRequestRef.current !== gw) return;
       setGwPicks(picks);
       
+      // Process live points
+      const pointsMap: Record<number, number> = {};
+      if (liveRes.ok) {
+        const liveData = await liveRes.json();
+        liveData.elements.forEach((el: any) => {
+          pointsMap[el.id] = el.stats.total_points;
+        });
+        setGwLivePoints(pointsMap);
+      }
+
       const gwTransfersList = transfers.filter(t => t.event === gw);
       setGwTransfers(gwTransfersList);
 
@@ -135,25 +153,16 @@ export default function App() {
 
       // Calculate transfer value gain
       let gain = null;
-      if (gwTransfersList.length > 0) {
+      if (gwTransfersList.length > 0 && Object.keys(pointsMap).length > 0) {
         let inPoints = 0;
         let outPoints = 0;
-
-        const liveRes = await fetch(`/api/fpl/event/${gw}/live`);
-        if (currentGwRequestRef.current !== gw) return;
-        if (liveRes.ok) {
-           const liveData = await liveRes.json();
-           
-           gwTransfersList.forEach(t => {
-              const playerInLive = liveData.elements.find((e: any) => e.id === t.element_in);
-              const playerOutLive = liveData.elements.find((e: any) => e.id === t.element_out);
-              
-              if (playerInLive) inPoints += playerInLive.stats.total_points;
-              if (playerOutLive) outPoints += playerOutLive.stats.total_points;
-           });
-           
-           gain = inPoints - outPoints - cost;
-        }
+        
+        gwTransfersList.forEach(t => {
+          inPoints += pointsMap[t.element_in] || 0;
+          outPoints += pointsMap[t.element_out] || 0;
+        });
+        
+        gain = inPoints - outPoints - cost;
       }
       setTransferValueGain(gain);
 
@@ -174,6 +183,8 @@ export default function App() {
     if (currentGwRequestRef.current !== gw) return;
     setRoasting(true);
     const mode = overrideMode || appMode;
+    const activeChip = gwPicks?.active_chip || null;
+    
     try {
       const playersIn = gwTransfersList.map(t => {
         const p = bootstrapData?.elements.find(e => e.id === t.element_in);
@@ -185,7 +196,7 @@ export default function App() {
         return p ? p.web_name : 'Unknown';
       });
       
-      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, mode);
+      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, mode, activeChip);
       if (currentGwRequestRef.current !== gw) return;
       setRoast(roastText);
       setRoastCache(prev => ({ ...prev, [`${gw}_${mode}`]: roastText }));
@@ -218,6 +229,15 @@ export default function App() {
       case 4: return 'FWD';
       default: return 'UNK';
     }
+  };
+
+  const getJerseyUrl = (playerId: number) => {
+    const player = bootstrapData?.elements.find(e => e.id === playerId);
+    if (!player) return null;
+    
+    // Goalkeepers have a different jersey (suffix _1)
+    const isGk = player.element_type === 1;
+    return `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${player.team_code}${isGk ? '_1' : ''}-66.webp`;
   };
 
   const handleSecretClick = () => {
@@ -379,46 +399,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Transfers Section */}
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-                      <div className="p-6 border-b border-zinc-800 flex items-center gap-3">
-                        <ArrowRightLeft className="w-5 h-5 text-zinc-400" />
-                        <h3 className="text-lg font-semibold">Transfers Made</h3>
-                      </div>
-                      <div className="p-6">
-                        {gwTransfers.length > 0 ? (
-                          <div className="space-y-4">
-                            {gwTransfers.map((t, i) => (
-                              <div key={i} className="flex items-center justify-between bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                                <div className="flex items-center gap-3 text-red-400 w-1/2">
-                                  <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                                    <ArrowRightLeft className="w-4 h-4" />
-                                  </div>
-                                  <div>
-                                    <div className="font-medium">{getPlayerName(t.element_out)}</div>
-                                    <div className="text-xs opacity-70">Out</div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-3 text-emerald-400 w-1/2 justify-end text-right">
-                                  <div>
-                                    <div className="font-medium">{getPlayerName(t.element_in)}</div>
-                                    <div className="text-xs opacity-70">In</div>
-                                  </div>
-                                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                                    <ArrowRightLeft className="w-4 h-4" />
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-zinc-500">
-                            No transfers made this gameweek.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
                     {/* Roast Section */}
                     <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden relative">
                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-cyan-500"></div>
@@ -439,9 +419,9 @@ export default function App() {
                           <button
                             onClick={handleRoast}
                             disabled={roasting}
-                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                            className={`px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 ${roast ? 'hidden' : ''}`}
                           >
-                            {roasting ? 'Generating...' : roast ? (appMode === 'compliment' ? 'Praise Again' : 'Roast Again') : (appMode === 'compliment' ? 'Praise My Transfers' : 'Roast My Transfers')}
+                            {roasting ? 'Generating...' : (appMode === 'compliment' ? 'Praise My Transfers' : 'Roast My Transfers')}
                           </button>
                         </div>
                       </div>
@@ -463,39 +443,119 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Lineup Section */}
+                    {/* Transfers Section */}
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+                      <div className="p-6 border-b border-zinc-800 flex items-center gap-3">
+                        <ArrowRightLeft className="w-5 h-5 text-zinc-400" />
+                        <h3 className="text-lg font-semibold">Transfers Made</h3>
+                      </div>
+                      <div className="p-6">
+                        {gwTransfers.length > 0 ? (
+                          <div className="space-y-4">
+                            {gwTransfers.map((t, i) => (
+                              <div key={i} className="flex items-center justify-between bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                                <div className="flex items-center gap-3 text-red-400 w-1/2">
+                                  <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
+                                    <ArrowRightLeft className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <div className="font-medium">{getPlayerName(t.element_out)}</div>
+                                    <div className="text-xs opacity-70 flex items-center gap-1">
+                                      Out <span className="font-mono text-zinc-500">({gwLivePoints[t.element_out] ?? '-'} pts)</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3 text-emerald-400 w-1/2 justify-end text-right">
+                                  <div>
+                                    <div className="font-medium">{getPlayerName(t.element_in)}</div>
+                                    <div className="text-xs opacity-70 flex items-center gap-1 justify-end">
+                                      <span className="font-mono text-zinc-500">({gwLivePoints[t.element_in] ?? '-'} pts)</span> In
+                                    </div>
+                                  </div>
+                                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                                    <ArrowRightLeft className="w-4 h-4" />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-zinc-500">
+                            {selectedGw === 1 ? 'Initial squad selection (No transfers in GW1).' : 'No transfers made this gameweek.'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Lineup Section - FPL Style Pitch */}
                     {gwPicks && (
                       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
                         <div className="p-6 border-b border-zinc-800 flex items-center gap-3">
                           <User className="w-5 h-5 text-zinc-400" />
                           <h3 className="text-lg font-semibold">Starting XI & Bench</h3>
                         </div>
-                        <div className="p-6">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {gwPicks.picks.map((pick) => (
-                              <div 
-                                key={pick.element} 
-                                className={`flex items-center justify-between p-3 rounded-xl border ${
-                                  pick.position <= 11 
-                                    ? 'bg-zinc-950 border-zinc-800' 
-                                    : 'bg-zinc-900/50 border-zinc-800/50 opacity-60'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center text-xs font-mono text-zinc-400">
-                                    {getPlayerPosition(pick.element)}
-                                  </div>
-                                  <div>
-                                    <div className="font-medium flex items-center gap-2">
-                                      {getPlayerName(pick.element)}
-                                      {pick.is_captain && <span className="text-xs bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold">C</span>}
-                                      {pick.is_vice_captain && <span className="text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-bold">V</span>}
+                        <div className="p-6 bg-emerald-900/20 relative">
+                          {/* Pitch Markings */}
+                          <div className="absolute inset-4 border-2 border-white/10 rounded-lg pointer-events-none"></div>
+                          <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-white/10 pointer-events-none"></div>
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-white/10 rounded-full pointer-events-none"></div>
+
+                          <div className="relative z-10 space-y-8 py-4">
+                            {/* Starting XI by Rows */}
+                            {[1, 2, 3, 4].map(posType => {
+                              const playersInRow = gwPicks.picks.filter(p => {
+                                const playerInfo = bootstrapData?.elements.find(e => e.id === p.element);
+                                return playerInfo?.element_type === posType && p.position <= 11;
+                              });
+
+                              return (
+                                <div key={posType} className="flex justify-around items-start gap-2">
+                                  {playersInRow.map(pick => (
+                                    <div key={pick.element} className="flex flex-col items-center text-center w-20">
+                                      <div className="relative mb-1">
+                                        <div className={`w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center transition-transform hover:scale-110`}>
+                                          <img 
+                                            src={getJerseyUrl(pick.element) || ''} 
+                                            alt="Jersey"
+                                            className="w-full h-full object-contain drop-shadow-xl"
+                                            referrerPolicy="no-referrer"
+                                          />
+                                        </div>
+                                        {pick.is_captain && <span className="absolute -top-1 -right-1 text-[10px] bg-emerald-500 text-white px-1 rounded font-bold shadow-sm z-20">C</span>}
+                                        {pick.is_vice_captain && <span className="absolute -top-1 -right-1 text-[10px] bg-zinc-700 text-white px-1 rounded font-bold shadow-sm z-20">V</span>}
+                                      </div>
+                                      <div className="bg-zinc-950/80 backdrop-blur-sm px-1.5 py-0.5 rounded border border-zinc-800 w-full overflow-hidden shadow-lg">
+                                        <div className="text-[10px] sm:text-xs font-medium truncate text-white">{getPlayerName(pick.element)}</div>
+                                        <div className="text-[10px] font-mono text-emerald-400">
+                                          {gwLivePoints[pick.element] !== undefined 
+                                            ? (gwLivePoints[pick.element] * pick.multiplier) 
+                                            : '-'} pts
+                                        </div>
+                                      </div>
                                     </div>
-                                    <div className="text-xs text-zinc-500">
-                                      {pick.position <= 11 ? 'Starting' : `Bench ${pick.position - 11}`}
-                                    </div>
-                                  </div>
+                                  ))}
                                 </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Bench Section */}
+                        <div className="p-6 bg-zinc-950/50 border-t border-zinc-800">
+                          <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Substitutes</div>
+                          <div className="flex justify-around gap-2">
+                            {gwPicks.picks.filter(p => p.position > 11).sort((a, b) => a.position - b.position).map(pick => (
+                              <div key={pick.element} className="flex flex-col items-center text-center w-20 opacity-80">
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center mb-1">
+                                  <img 
+                                    src={getJerseyUrl(pick.element) || ''} 
+                                    alt="Jersey"
+                                    className="w-full h-full object-contain drop-shadow-md"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
+                                <div className="text-[10px] sm:text-xs font-medium truncate text-zinc-300 w-full">{getPlayerName(pick.element)}</div>
+                                <div className="text-[10px] font-mono text-zinc-500">{gwLivePoints[pick.element] ?? '-'} pts</div>
                               </div>
                             ))}
                           </div>
