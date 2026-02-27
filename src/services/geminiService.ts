@@ -66,42 +66,61 @@ export const generateRoast = async (
 `;
   }
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            zh: { type: Type.STRING, description: "Chinese version" },
-            en: { type: Type.STRING, description: "English version" }
-          },
-          required: ["zh", "en"]
-        }
-      }
-    });
-    const jsonStr = response.text || '{}';
-    const result = JSON.parse(jsonStr);
-    
-    // 2. Save to Cache
-    try {
-      await fetch('/api/cache/roast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, gw: gameweek, mode, zh: result.zh, en: result.en })
-      });
-    } catch (e) {
-      console.error('Cache save failed', e);
-    }
+  let attempts = 0;
+  const maxAttempts = 3;
 
-    return result;
-  } catch (error) {
-    console.error('Error generating roast:', error);
-    return {
-      zh: '生成吐槽失败。连AI都不忍心看你这稀烂的阵容了。',
-      en: 'Failed to generate roast. Even the AI refused to look at your terrible team.'
-    };
+  while (attempts < maxAttempts) {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              zh: { type: Type.STRING, description: "Chinese version" },
+              en: { type: Type.STRING, description: "English version" }
+            },
+            required: ["zh", "en"]
+          }
+        }
+      });
+      const jsonStr = response.text || '{}';
+      const result = JSON.parse(jsonStr);
+      
+      // 2. Save to Cache
+      try {
+        await fetch('/api/cache/roast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamId, gw: gameweek, mode, zh: result.zh, en: result.en })
+        });
+      } catch (e) {
+        console.error('Cache save failed', e);
+      }
+
+      return result;
+    } catch (error: any) {
+      attempts++;
+      console.error(`Gemini attempt ${attempts} failed:`, error);
+      if (attempts < maxAttempts && (error.message?.includes('429') || error.message?.includes('quota'))) {
+        // Wait 2s, 4s before retrying
+        await new Promise(resolve => setTimeout(resolve, attempts * 2000));
+        continue;
+      }
+      if (attempts >= maxAttempts) {
+        console.error('Error generating roast after max attempts:', error);
+        return {
+          zh: '生成吐槽失败。连AI都不忍心看你这稀烂的阵容了。',
+          en: 'Failed to generate roast. Even the AI refused to look at your terrible team.'
+        };
+      }
+    }
   }
+
+  return { 
+    zh: '生成吐槽失败。连AI都不忍心看你这稀烂的阵容了。', 
+    en: 'Failed to generate roast. Even the AI refused to look at your terrible team.' 
+  };
 };

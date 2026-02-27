@@ -65,8 +65,8 @@ export default function App() {
       setHistory(currentHistory); // Show latest first
       setTransfers(transfersData || []);
       
-      // Start background generation for recent 5 GWs to avoid quota issues
-      runBackgroundJobs(id, currentHistory.slice(0, 5), transfersData || [], bootstrapData, appMode);
+      // Start background generation for recent 3 GWs to avoid quota issues
+      runBackgroundJobs(id, currentHistory.slice(0, 3), transfersData || [], bootstrapData, appMode);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch team data. Please check your Team ID.');
     } finally {
@@ -105,8 +105,8 @@ export default function App() {
         // Call generateRoast (which handles the caching internally now)
         await generateRoast(id, gw.event, gw.points, playersIn, playersOut, gw.event_transfers_cost, gain, mode);
         
-        // Sleep longer to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Sleep longer to avoid rate limiting (8s for background jobs)
+        await new Promise(resolve => setTimeout(resolve, 8000));
       } catch (e) {
         console.error(`Background job failed for GW ${gw.event}`, e);
       }
