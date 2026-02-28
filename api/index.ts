@@ -131,10 +131,91 @@ const fetchFPL = async (url: string) => {
   }
 };
 
+// Helper to fetch with Redis cache
+const fetchWithCache = async (url: string, cacheKey: string, ttlSeconds: number) => {
+  if (redis) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log(`[FPL Cache] HIT for ${cacheKey}`);
+        return cached;
+      }
+    } catch (e) {
+      console.error("[FPL Cache] Redis get error:", e);
+    }
+  }
+
+  const data = await fetchFPL(url);
+
+  if (redis) {
+    try {
+      await redis.set(cacheKey, data, { ex: ttlSeconds });
+      console.log(`[FPL Cache] SET for ${cacheKey}`);
+    } catch (e) {
+      console.error("[FPL Cache] Redis set error:", e);
+    }
+  }
+
+  return data;
+};
+
+// Background Sync Function
+const syncTeamData = async (teamId: string) => {
+  console.log(`[Sync] Starting background sync for team ${teamId}`);
+  try {
+    const history = await fetchWithCache(
+      `https://fantasy.premierleague.com/api/entry/${teamId}/history/`,
+      `fpl_history:${teamId}`,
+      3600
+    );
+    
+    await fetchWithCache(
+      `https://fantasy.premierleague.com/api/entry/${teamId}/transfers/`,
+      `fpl_transfers:${teamId}`,
+      3600
+    );
+
+    const currentHistory = history.current || [];
+    for (const gw of currentHistory) {
+      const eventId = gw.event;
+      
+      // Fetch picks
+      await fetchWithCache(
+        `https://fantasy.premierleague.com/api/entry/${teamId}/event/${eventId}/picks/`,
+        `fpl_picks:${teamId}_${eventId}`,
+        86400 // Cache picks for 1 day
+      );
+      await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit protection
+
+      // Fetch live
+      await fetchWithCache(
+        `https://fantasy.premierleague.com/api/event/${eventId}/live/`,
+        `fpl_live:${eventId}`,
+        3600 // Cache live for 1 hour
+      );
+      await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit protection
+    }
+    console.log(`[Sync] Completed background sync for team ${teamId}`);
+  } catch (e) {
+    console.error(`[Sync] Error syncing team ${teamId}:`, e);
+  }
+};
+
 // API routes
+app.post(["/api/sync/:id", "/sync/:id"], (req, res) => {
+  const teamId = req.params.id;
+  // Start background sync without awaiting
+  syncTeamData(teamId).catch(console.error);
+  res.json({ status: "syncing", message: "Background sync started" });
+});
+
 app.get(["/api/fpl/bootstrap", "/fpl/bootstrap"], async (req, res) => {
   try {
-    const data = await fetchFPL("https://fantasy.premierleague.com/api/bootstrap-static/");
+    const data = await fetchWithCache(
+      "https://fantasy.premierleague.com/api/bootstrap-static/",
+      "fpl_bootstrap",
+      3600
+    );
     res.json(data);
   } catch (error: any) {
     console.error("Bootstrap error:", error);
@@ -147,7 +228,11 @@ app.get(["/api/fpl/bootstrap", "/fpl/bootstrap"], async (req, res) => {
 
 app.get(["/api/fpl/entry/:id/history", "/fpl/entry/:id/history"], async (req, res) => {
   try {
-    const data = await fetchFPL(`https://fantasy.premierleague.com/api/entry/${req.params.id}/history/`);
+    const data = await fetchWithCache(
+      `https://fantasy.premierleague.com/api/entry/${req.params.id}/history/`,
+      `fpl_history:${req.params.id}`,
+      3600
+    );
     res.json(data);
   } catch (error: any) {
     console.error("History error:", error);
@@ -160,7 +245,11 @@ app.get(["/api/fpl/entry/:id/history", "/fpl/entry/:id/history"], async (req, re
 
 app.get(["/api/fpl/entry/:id/transfers", "/fpl/entry/:id/transfers"], async (req, res) => {
   try {
-    const data = await fetchFPL(`https://fantasy.premierleague.com/api/entry/${req.params.id}/transfers/`);
+    const data = await fetchWithCache(
+      `https://fantasy.premierleague.com/api/entry/${req.params.id}/transfers/`,
+      `fpl_transfers:${req.params.id}`,
+      3600
+    );
     res.json(data);
   } catch (error: any) {
     console.error("Transfers error:", error);
@@ -170,7 +259,11 @@ app.get(["/api/fpl/entry/:id/transfers", "/fpl/entry/:id/transfers"], async (req
 
 app.get(["/api/fpl/entry/:id/event/:gw/picks", "/fpl/entry/:id/event/:gw/picks"], async (req, res) => {
   try {
-    const data = await fetchFPL(`https://fantasy.premierleague.com/api/entry/${req.params.id}/event/${req.params.gw}/picks/`);
+    const data = await fetchWithCache(
+      `https://fantasy.premierleague.com/api/entry/${req.params.id}/event/${req.params.gw}/picks/`,
+      `fpl_picks:${req.params.id}_${req.params.gw}`,
+      86400
+    );
     res.json(data);
   } catch (error: any) {
     console.error("Picks error:", error);
@@ -180,7 +273,11 @@ app.get(["/api/fpl/entry/:id/event/:gw/picks", "/fpl/entry/:id/event/:gw/picks"]
 
 app.get(["/api/fpl/event/:gw/live", "/fpl/event/:gw/live"], async (req, res) => {
   try {
-    const data = await fetchFPL(`https://fantasy.premierleague.com/api/event/${req.params.gw}/live/`);
+    const data = await fetchWithCache(
+      `https://fantasy.premierleague.com/api/event/${req.params.gw}/live/`,
+      `fpl_live:${req.params.gw}`,
+      3600
+    );
     res.json(data);
   } catch (error: any) {
     console.error("Live error:", error);

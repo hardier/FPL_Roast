@@ -58,6 +58,10 @@ export default function App() {
     
     try {
       const id = parseInt(teamId, 10);
+      
+      // Trigger background sync for all GWs
+      fetch(`/api/sync/${id}`, { method: 'POST' }).catch(console.error);
+
       const [historyData, transfersData] = await Promise.all([
         fetchTeamHistory(id),
         fetchTeamTransfers(id)
