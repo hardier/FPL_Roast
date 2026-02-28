@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Trophy, ArrowRightLeft, AlertCircle, ChevronRight, User, Shield, Zap } from 'lucide-react';
+import { Search, Trophy, ArrowRightLeft, AlertCircle, ChevronRight, User, Shield, Zap, Flame, Heart } from 'lucide-react';
 import { fetchBootstrap, fetchTeamHistory, fetchTeamTransfers, fetchEventPicks } from './services/fplService';
-import { generateRoast } from './services/geminiService';
 import { BootstrapData, HistoryEvent, Transfer, EventPicks, Player } from './types';
 
 export default function App() {
@@ -70,84 +69,10 @@ export default function App() {
       const currentHistory = [...(historyData.current || [])].reverse();
       setHistory(currentHistory); // Show latest first
       setTransfers(transfersData || []);
-      
-      // Start background generation for recent 3 GWs to avoid quota issues
-      runBackgroundJobs(id, currentHistory.slice(0, 3), transfersData || [], bootstrapData, appMode);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch team data. Please check your Team ID.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const runBackgroundJobs = async (id: number, historyList: HistoryEvent[], transfersList: Transfer[], bootstrap: BootstrapData, mode: 'roast' | 'compliment') => {
-    for (const gw of historyList) {
-      try {
-        // Check if already cached
-        const cacheRes = await fetch(`/api/cache/roast?teamId=${id}&gw=${gw.event}&mode=${mode}`);
-        if (cacheRes.ok) continue;
-
-        // Need to calculate gain, captain, bench
-        const gwTransfersList = transfersList.filter(t => t.event === gw.event);
-        let gain = null;
-        let captainInfo = null;
-        let benchPoints = null;
-
-        try {
-          const [picksRes, liveRes] = await Promise.all([
-            fetchEventPicks(id, gw.event),
-            fetch(`/api/fpl/event/${gw.event}/live`)
-          ]);
-
-          if (liveRes.ok) {
-            const liveData = await liveRes.json();
-            
-            // Gain
-            if (gwTransfersList.length > 0) {
-              let inPoints = 0, outPoints = 0;
-              gwTransfersList.forEach(t => {
-                const pIn = liveData.elements.find((e: any) => e.id === t.element_in);
-                const pOut = liveData.elements.find((e: any) => e.id === t.element_out);
-                if (pIn) inPoints += pIn.stats.total_points;
-                if (pOut) outPoints += pOut.stats.total_points;
-              });
-              gain = inPoints - outPoints - gw.event_transfers_cost;
-            }
-
-            // Captain & Bench
-            if (picksRes && picksRes.picks) {
-              const captainPick = picksRes.picks.find((p: any) => p.is_captain);
-              if (captainPick) {
-                const capPlayer = bootstrap.elements.find(e => e.id === captainPick.element);
-                const capLive = liveData.elements.find((e: any) => e.id === captainPick.element);
-                if (capPlayer && capLive) {
-                  captainInfo = { name: capPlayer.web_name, points: capLive.stats.total_points * captainPick.multiplier };
-                }
-              }
-              
-              let bPoints = 0;
-              picksRes.picks.filter((p: any) => p.position > 11).forEach((p: any) => {
-                const bLive = liveData.elements.find((e: any) => e.id === p.element);
-                if (bLive) bPoints += bLive.stats.total_points;
-              });
-              benchPoints = bPoints;
-            }
-          }
-        } catch (e) {
-          console.error('Failed to fetch picks/live for background job', e);
-        }
-
-        const playersIn = gwTransfersList.map(t => bootstrap?.elements.find(e => e.id === t.element_in)?.web_name || 'Unknown');
-        const playersOut = gwTransfersList.map(t => bootstrap?.elements.find(e => e.id === t.element_out)?.web_name || 'Unknown');
-
-        // Call generateRoast (which handles the caching internally now)
-        await generateRoast(id, gw.event, gw.points, playersIn, playersOut, gw.event_transfers_cost, gain, mode, null, captainInfo, benchPoints);
-        
-        // Sleep longer to avoid rate limiting (8s for background jobs)
-        await new Promise(resolve => setTimeout(resolve, 8000));
-      } catch (e) {
-        console.error(`Background job failed for GW ${gw.event}`, e);
-      }
     }
   };
 
@@ -207,7 +132,7 @@ export default function App() {
       if (roastCache[cacheKey]) {
         setRoast(roastCache[cacheKey]);
       } else {
-        generateAndSetRoast(gw, gwHistory?.points || 0, gwTransfersList, cost, gain);
+        generateAndSetRoast(gw);
       }
 
     } catch (err) {
@@ -215,46 +140,17 @@ export default function App() {
     }
   };
 
-  const generateAndSetRoast = async (gw: number, points: number, gwTransfersList: Transfer[], cost: number, gain: number | null, overrideMode?: 'roast' | 'compliment') => {
+  const generateAndSetRoast = async (gw: number, overrideMode?: 'roast' | 'compliment') => {
     if (currentGwRequestRef.current !== gw) return;
     setRoasting(true);
     const mode = overrideMode || appMode;
-    const activeChip = gwPicks?.active_chip || null;
-    
-    let captainInfo = null;
-    let benchPoints = null;
-    
-    if (gwPicks) {
-      const captainPick = gwPicks.picks.find(p => p.is_captain);
-      if (captainPick) {
-        const capPlayer = bootstrapData?.elements.find(e => e.id === captainPick.element);
-        if (capPlayer) {
-          captainInfo = { 
-            name: capPlayer.web_name, 
-            points: (gwLivePoints[captainPick.element] || 0) * captainPick.multiplier 
-          };
-        }
-      }
-      
-      let bPoints = 0;
-      gwPicks.picks.filter(p => p.position > 11).forEach(p => {
-        bPoints += (gwLivePoints[p.element] || 0);
-      });
-      benchPoints = bPoints;
-    }
     
     try {
-      const playersIn = gwTransfersList.map(t => {
-        const p = bootstrapData?.elements.find(e => e.id === t.element_in);
-        return p ? p.web_name : 'Unknown';
-      });
+      const res = await fetch(`/api/roast?teamId=${teamId}&gw=${gw}&mode=${mode}`);
+      if (!res.ok) throw new Error('Failed to generate roast');
       
-      const playersOut = gwTransfersList.map(t => {
-        const p = bootstrapData?.elements.find(e => e.id === t.element_out);
-        return p ? p.web_name : 'Unknown';
-      });
+      const roastText = await res.json();
       
-      const roastText = await generateRoast(parseInt(teamId, 10), gw, points, playersIn, playersOut, cost, gain, mode, activeChip, captainInfo, benchPoints);
       if (currentGwRequestRef.current !== gw) return;
       setRoast(roastText);
       setRoastCache(prev => ({ ...prev, [`${gw}_${mode}`]: roastText }));
@@ -269,9 +165,8 @@ export default function App() {
   };
 
   const handleRoast = async () => {
-    if (!selectedGw || !gwPicks || !bootstrapData) return;
-    const gwHistory = history.find(h => h.event === selectedGw);
-    generateAndSetRoast(selectedGw, gwHistory?.points || 0, gwTransfers, gwHistory?.event_transfers_cost || 0, transferValueGain);
+    if (!selectedGw) return;
+    generateAndSetRoast(selectedGw);
   };
 
   const getPlayerName = (id: number) => {
@@ -308,10 +203,8 @@ export default function App() {
       if (roastCache[cacheKey]) {
         setRoast(roastCache[cacheKey]);
       } else {
-        const gwHistory = history.find(h => h.event === selectedGw);
-        const gwTransfersList = transfers.filter(t => t.event === selectedGw);
         // We pass the newMode explicitly to avoid stale state issues
-        generateAndSetRoast(selectedGw, gwHistory?.points || 0, gwTransfersList, gwHistory?.event_transfers_cost || 0, transferValueGain, newMode);
+        generateAndSetRoast(selectedGw, newMode);
       }
     }
   };
@@ -323,11 +216,15 @@ export default function App() {
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center justify-center p-3 bg-emerald-500/10 rounded-2xl mb-6 cursor-pointer"
+            className={`inline-flex items-center justify-center p-3 rounded-2xl mb-6 cursor-pointer transition-colors ${appMode === 'compliment' ? 'bg-pink-500/10 hover:bg-pink-500/20' : 'bg-emerald-500/10 hover:bg-emerald-500/20'}`}
             onClick={handleSecretClick}
             title="Secret Mode Toggle"
           >
-            <Shield className={`w-8 h-8 ${appMode === 'compliment' ? 'text-pink-400' : 'text-emerald-400'}`} />
+            {appMode === 'compliment' ? (
+              <Heart className="w-8 h-8 text-pink-400 fill-pink-400/20" />
+            ) : (
+              <Flame className="w-8 h-8 text-emerald-400 fill-emerald-400/20" />
+            )}
           </motion.div>
           <motion.h1 
             initial={{ opacity: 0 }}
@@ -462,7 +359,11 @@ export default function App() {
                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-cyan-500"></div>
                       <div className="p-4 sm:p-6 border-b border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
                         <div className="flex items-center gap-3">
-                          <Zap className={`w-5 h-5 ${appMode === 'compliment' ? 'text-pink-400' : 'text-emerald-400'}`} />
+                          {appMode === 'compliment' ? (
+                            <Heart className="w-5 h-5 text-pink-400" />
+                          ) : (
+                            <Flame className="w-5 h-5 text-emerald-400" />
+                          )}
                           <h3 className="text-lg font-semibold">{appMode === 'compliment' ? 'AI Praise' : 'AI Roast'}</h3>
                         </div>
                         <div className="flex items-center gap-2 w-full sm:w-auto">
