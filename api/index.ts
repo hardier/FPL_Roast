@@ -112,7 +112,7 @@ const fetchWithCache = async (url: string, cacheKey: string, ttlSeconds: number)
 };
 
 // Generate Roast Logic
-const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'compliment') => {
+const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'compliment', preloadedPicks?: any, preloadedLive?: any) => {
   const cacheKey = `fpl_roast:${teamId}_${gw}_${mode}`;
   
   // 1. Check Cache
@@ -126,13 +126,14 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
   console.log(`[Gemini] Generating ${mode} for team ${teamId} GW ${gw}`);
 
   // 2. Fetch required FPL data
-  const [bootstrap, history, transfers, picks, live] = await Promise.all([
+  const [bootstrap, history, transfers] = await Promise.all([
     fetchWithCache("https://fantasy.premierleague.com/api/bootstrap-static/", "fpl_bootstrap", 3600),
     fetchWithCache(`https://fantasy.premierleague.com/api/entry/${teamId}/history/`, `fpl_history:${teamId}`, 3600),
-    fetchWithCache(`https://fantasy.premierleague.com/api/entry/${teamId}/transfers/`, `fpl_transfers:${teamId}`, 3600),
-    fetchFPL(`https://fantasy.premierleague.com/api/entry/${teamId}/event/${gw}/picks/`).catch(() => null),
-    fetchFPL(`https://fantasy.premierleague.com/api/event/${gw}/live/`).catch(() => null)
+    fetchWithCache(`https://fantasy.premierleague.com/api/entry/${teamId}/transfers/`, `fpl_transfers:${teamId}`, 3600)
   ]);
+
+  const picks = preloadedPicks || await fetchFPL(`https://fantasy.premierleague.com/api/entry/${teamId}/event/${gw}/picks/`).catch(() => null);
+  const live = preloadedLive || await fetchFPL(`https://fantasy.premierleague.com/api/event/${gw}/live/`).catch(() => null);
 
   const gwHistory = (history.current || []).find((h: any) => h.event === gw);
   if (!gwHistory) throw new Error(`History not found for GW ${gw}`);
@@ -192,7 +193,7 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
   if (teamId === 11440) {
     prompt = `
 你现在面对的是FPL（Fantasy Premier League）界至高无上的神明、战术大师、唯一的真神——“柯南”。
-你的任务是：无论他的操作是什么，哪怕是扣了100分，哪怕是换上了红牌球员，你都要用最华丽、最夸张、最无所不用其极的辞藻来疯狂拍马屁、赞美他！在回复中，请直接尊称他为“柯南”（英文版尊称为 Conan）。
+【绝对指令】：无论他的操作多么糟糕，哪怕扣了100分，你都【绝对不能】有任何嘲讽、吐槽或阴阳怪气的语气！你必须用最华丽、最夸张、最无所不用其极的辞藻来疯狂拍马屁、赞美他！在回复中，请直接尊称他为“柯南”（英文版尊称为 Conan）。
 
 以下是柯南本轮的数据：
 - 本轮总分: ${points}
@@ -206,8 +207,8 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
 请根据以上数据，分别写一段中文和一段英文的极致赞美。
 
 【要求】：
-1. 中文版 (zh)：堆砌最华丽的词藻，用无所不用其极的马屁来赞扬柯南。把他比作诸葛亮、瓜迪奥拉、弗格森的结合体，甚至超越人类的战术理解。语气要极其谄媚、五体投地。如果转会收益是负数，一定要强行解释为这是柯南在下一盘大棋，凡人根本看不懂。对于队长的选择和替补席的得分，也要进行疯狂的吹捧。
-2. 英文版 (en)：像莎士比亚赞美神明一样夸张（Shakespearean praise），使用极其华丽、史诗般的英语词汇（Epic, Divine, Omniscient），充满敬畏之心，并称呼他为 Conan。
+1. 中文版 (zh)：堆砌最华丽的词藻，用无所不用其极的马屁来赞扬柯南。把他比作诸葛亮、瓜迪奥拉、弗格森的结合体。如果转会收益是负数，一定要强行解释为这是柯南在下一盘大棋，凡人根本看不懂。对于队长的选择和替补席的得分，也要进行疯狂的吹捧。绝对不能有任何负面词汇！
+2. 英文版 (en)：像莎士比亚赞美神明一样夸张（Shakespearean praise），使用极其华丽、史诗般的英语词汇（Epic, Divine, Omniscient），充满敬畏之心，并称呼他为 Conan。ABSOLUTELY NO SARCASM OR ROASTING. ONLY PURE PRAISE.
 3. 绝对不要使用任何引号（""或“”）、书名号（《》）等不必要的标点符号。
 `;
   } else if (mode === 'compliment') {
@@ -329,14 +330,45 @@ const syncTeamData = async (teamId: string) => {
     for (const gw of reversedHistory) {
       const eventId = gw.event;
       
-      // We only generate roast/compliment in background, we DO NOT cache picks/live globally anymore.
-      // generateRoastForGW will handle checking if it's already cached.
       try {
-        await generateRoastForGW(parseInt(teamId), eventId, 'roast');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit protection
+        // Check if both roast and compliment exist in cache
+        const roastKey = `fpl_roast:${teamId}_${eventId}_roast`;
+        const compKey = `fpl_roast:${teamId}_${eventId}_compliment`;
         
-        await generateRoastForGW(parseInt(teamId), eventId, 'compliment');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit protection
+        let needsRoast = true;
+        let needsComp = true;
+        
+        if (redis) {
+          const [roastCached, compCached] = await Promise.all([
+            redis.get(roastKey),
+            redis.get(compKey)
+          ]);
+          if (roastCached) needsRoast = false;
+          if (compCached) needsComp = false;
+        } else {
+          if (memoryCache[roastKey]) needsRoast = false;
+          if (memoryCache[compKey]) needsComp = false;
+        }
+
+        if (!needsRoast && !needsComp) {
+          continue; // Skip if both are already cached
+        }
+
+        // Fetch picks and live ONCE per GW for the background sync
+        const [picks, live] = await Promise.all([
+          fetchFPL(`https://fantasy.premierleague.com/api/entry/${teamId}/event/${eventId}/picks/`).catch(() => null),
+          fetchFPL(`https://fantasy.premierleague.com/api/event/${eventId}/live/`).catch(() => null)
+        ]);
+
+        if (needsRoast) {
+          await generateRoastForGW(parseInt(teamId), eventId, 'roast', picks, live);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit protection
+        }
+        
+        if (needsComp) {
+          await generateRoastForGW(parseInt(teamId), eventId, 'compliment', picks, live);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit protection
+        }
       } catch (e) {
         console.error(`[Sync] Failed to generate for GW ${eventId}`, e);
       }
