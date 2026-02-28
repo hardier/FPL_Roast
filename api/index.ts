@@ -380,6 +380,35 @@ const syncTeamData = async (teamId: string) => {
 };
 
 // API routes
+app.post(["/api/seed-league/:id", "/seed-league/:id"], async (req, res) => {
+  const leagueId = req.params.id;
+  
+  res.json({ status: "syncing", message: `Background sync started for league ${leagueId}` });
+
+  try {
+    console.log(`[League Sync] Fetching standings for league ${leagueId}`);
+    const standingsRes = await fetchFPL(`https://fantasy.premierleague.com/api/leagues-classic/${leagueId}/standings/`);
+    const teams = standingsRes.standings.results;
+    console.log(`[League Sync] Found ${teams.length} teams in league ${leagueId}`);
+
+    // Process teams sequentially to avoid rate limits
+    const processLeague = async () => {
+      for (let i = 0; i < teams.length; i++) {
+        const teamId = teams[i].entry;
+        console.log(`[League Sync] Processing team ${i + 1}/${teams.length}: ${teamId}`);
+        await syncTeamData(teamId.toString());
+        // Wait a bit between teams
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+      console.log(`[League Sync] Completed all teams in league ${leagueId}`);
+    };
+
+    processLeague().catch(console.error);
+  } catch (e) {
+    console.error(`[League Sync] Failed to start sync for league ${leagueId}:`, e);
+  }
+});
+
 app.get(["/api/roast", "/roast"], async (req, res) => {
   const { teamId, gw, mode } = req.query;
   if (!teamId || !gw || !mode) {

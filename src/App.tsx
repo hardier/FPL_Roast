@@ -21,7 +21,11 @@ export default function App() {
   const [roast, setRoast] = useState<{ zh: string; en: string } | null>(null);
   const [roasting, setRoasting] = useState(false);
   const [roastCache, setRoastCache] = useState<Record<string, { zh: string; en: string }>>({});
-  const [roastLang, setRoastLang] = useState<'zh' | 'en'>('zh');
+  
+  // Initialize language based on URL path
+  const initialLang = window.location.pathname.startsWith('/en') ? 'en' : 'zh';
+  const [roastLang, setRoastLang] = useState<'zh' | 'en'>(initialLang);
+  
   const [transferValueGain, setTransferValueGain] = useState<number | null>(null);
   const [appMode, setAppMode] = useState<'roast' | 'compliment'>('roast');
   const [gwLivePoints, setGwLivePoints] = useState<Record<number, number>>({});
