@@ -115,19 +115,25 @@ const fetchWithCache = async (url: string, cacheKey: string, ttlSeconds: number)
 const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'compliment', preloadedPicks?: any, preloadedLive?: any) => {
   const cacheKey = `fpl_roast:${teamId}_${gw}_${mode}`;
   
-  // 1. Check Cache
-  if (redis) {
-    const cached = await redis.get(cacheKey);
-    if (cached) return cached;
-  } else if (memoryCache[cacheKey]) {
-    return memoryCache[cacheKey];
+  // Fetch bootstrap first to determine the current GW
+  const bootstrap = await fetchWithCache("https://fantasy.premierleague.com/api/bootstrap-static/", "fpl_bootstrap", 3600);
+  const currentGw = bootstrap.events.find((e: any) => e.is_current)?.id;
+  const isCurrentGw = gw === currentGw;
+
+  // 1. Check Cache (Skip for current GW as live points update frequently)
+  if (!isCurrentGw) {
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) return cached;
+    } else if (memoryCache[cacheKey]) {
+      return memoryCache[cacheKey];
+    }
   }
 
-  console.log(`[Gemini] Generating ${mode} for team ${teamId} GW ${gw}`);
+  console.log(`[Gemini] Generating ${mode} for team ${teamId} GW ${gw} (isCurrentGw: ${isCurrentGw})`);
 
   // 2. Fetch required FPL data
-  const [bootstrap, history, transfers] = await Promise.all([
-    fetchWithCache("https://fantasy.premierleague.com/api/bootstrap-static/", "fpl_bootstrap", 3600),
+  const [history, transfers] = await Promise.all([
     fetchWithCache(`https://fantasy.premierleague.com/api/entry/${teamId}/history/`, `fpl_history:${teamId}`, 3600),
     fetchWithCache(`https://fantasy.premierleague.com/api/entry/${teamId}/transfers/`, `fpl_transfers:${teamId}`, 3600)
   ]);
@@ -188,6 +194,12 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
   const captainText = captainInfo ? `队长: ${captainInfo.name} (得分: ${captainInfo.points})` : '队长: 未知';
   const benchText = benchPoints !== null ? `替补席总得分: ${benchPoints}` : '替补席得分: 未知';
 
+  const knowledgeText = `
+【背景知识 / Context】：
+如果提到 Thiago，请记住他是目前效力于布伦特福德（Brentford）的前锋 Igor Thiago，绝对不是以前效力于利物浦的那个中场 Thiago Alcantara。
+If 'Thiago' is mentioned, it refers to Igor Thiago, the striker playing for Brentford, NOT the former Liverpool midfielder Thiago Alcantara.
+`;
+
   let prompt = '';
 
   if (teamId === 11440) {
@@ -203,6 +215,7 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
 - 被柯南抛弃的球员: ${playersOut.length > 0 ? playersOut.join(', ') : '无'}
 - 钦定队长: ${captainInfo ? `${captainInfo.name} (得分: ${captainInfo.points})` : '未知'}
 - 替补席神兵总得分: ${benchPoints !== null ? benchPoints : '未知'}
+${knowledgeText}
 
 请根据以上数据，分别写一段中文和一段英文的极致赞美。
 
@@ -224,6 +237,7 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
 - 卖出球员: ${playersOut.length > 0 ? playersOut.join(', ') : '无'}
 - ${captainText}
 - ${benchText}
+${knowledgeText}
 
 请根据以上数据，分别写一段中文赞美和一段英文赞美。
 
@@ -234,8 +248,8 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
 `;
   } else {
     prompt = `
-你是一个极其毒舌、刻薄且严格的FPL（Fantasy Premier League）老玩家。
-你的任务是无情地吐槽用户在第 ${gw} 轮的操作。
+你是一个幽默、机智、喜欢玩梗的FPL（Fantasy Premier League）脱口秀演员/评论员。
+你的任务是用风趣幽默、充满双关语（puns）和机智调侃的方式来点评用户在第 ${gw} 轮的操作。不要总是用严厉的斥责或霸凌的语气，而是要像朋友之间那种聪明的、让人会心一笑的损人方式（witty banter）。
 
 以下是该用户本轮的数据：
 - 本轮总分: ${points}
@@ -245,17 +259,18 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
 - 卖出球员: ${playersOut.length > 0 ? playersOut.join(', ') : '无'}
 - ${captainText}
 - ${benchText}
+${knowledgeText}
 
 请根据以上数据，分别写一段中文吐槽和一段英文吐槽。
 
 【特别说明】：
-1. 如果是第 1 轮 (Gameweek 1)，不要嘲笑用户没做转会，因为第一周大家都没有转会，重点吐槽他们的初始选人眼光。
-2. 如果使用了 Wildcard (外卡) 或 Free Hit (免费换人) 芯片，转会数量可能很多但成本为 0，要针对他们的“大清洗”操作进行评价。
-3. 务必吐槽他们队长的选择（如果得分很低），以及替补席的选择（如果替补席得分很高，说明他们把大腿放在了板凳上，狠狠嘲笑这一点）。
+1. 如果是第 1 轮 (Gameweek 1)，重点调侃他们的初始选人眼光。
+2. 如果使用了 Wildcard (外卡) 或 Free Hit (免费换人) 芯片，针对他们的“大清洗”操作进行幽默的点评。
+3. 调侃他们队长的选择（如果得分很低），以及替补席的选择（如果替补席得分很高，说明他们把大腿放在了板凳上，用机智的比喻来形容这种尴尬）。
 
 【要求】：
-1. 中文版 (zh)：语气必须非常自然、口语化，就像微信群里那个最懂球但也最嘴臭的群友。直接开喷，不要客套。
-2. 英文版 (en)：使用极其讽刺的英式幽默（Dry British Sarcasm）。
+1. 中文版 (zh)：语气要像脱口秀演员，多用幽默的比喻、谐音梗或网络热梗。机智、好玩、损人不带脏字，让人看了觉得好笑而不是生气。
+2. 英文版 (en)：Use witty British banter, clever puns, and humorous metaphors. Be a cheeky but lovable pundit. Do not be overly aggressive or bullying; make it a fun, smart roast.
 3. 绝对不要使用任何引号（""或“”）、书名号（《》）等不必要的标点符号。
 `;
   }
@@ -299,15 +314,17 @@ const generateRoastForGW = async (teamId: number, gw: number, mode: 'roast' | 'c
     }
   }
 
-  // 5. Save to Cache
-  if (redis) {
-    try {
-      await redis.set(cacheKey, result);
-    } catch (e) {
-      console.error("[Cache] Redis set error:", e);
+  // 5. Save to Cache (Skip for current GW)
+  if (!isCurrentGw) {
+    if (redis) {
+      try {
+        await redis.set(cacheKey, result);
+      } catch (e) {
+        console.error("[Cache] Redis set error:", e);
+      }
+    } else {
+      memoryCache[cacheKey] = result;
     }
-  } else {
-    memoryCache[cacheKey] = result;
   }
 
   return result;
